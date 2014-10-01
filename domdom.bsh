@@ -12,7 +12,6 @@ xmlstarlet="/usr/local/bin/xml"
 #Todo
 #Add a nice menu where you can manually change your settings after first-time run, choose what to do
 #Let user fetch the (huge) list of all Anime and grep through it to find the title they want
-#Let batch mode take stuff like: "Sword Art Online" 1-4,7,10-24 (right now it only does a single episode, which is only useful if you script elsewhere)
 #Maybe hide curl output and make some nicer download bars?
 #Hide unzip output and put a boring echo there, honestly won't take long but I'm lazy
 #Take on a project where I actually know anything about what I'm dealing with for once (I learned how to use a web debugging proxy, how to interface with SOAP servers, how to post with curl, how to (poorly) use xmlstarlet, and how to use bash, all just for this)
@@ -79,8 +78,10 @@ readTitle()
   else
     echo $title
   fi
-  eval mkdir -p \"${downloaddir}/${title}\"
-  downloaddir=${downloaddir}/${title}
+  #Change slashes in title to dashes so we don't make weird folders
+  filetitle=`echo "${title}" | sed -e 's/\//-/g'`
+  eval mkdir -p \"${downloaddir}/${filetitle}\"
+  downloaddir=${downloaddir}/${filetitle}
   fetchEpisodeList
 }
 
@@ -102,11 +103,25 @@ fetchEpisodeList()
   soapRequest GetListEpisode
   episodecount=`$xmlstarlet sel -N d="http://tempuri.org/" -t -v "count(//d:Name)" ${HOME}/.domdom/tmp/incoming`
   echo $episodecount files were found.
+  if [[ $episodecount -eq 0 ]]
+  then
+    unset title
+    readVariables
+    readTitle
+  fi
   $xmlstarlet sel -N d="http://tempuri.org/" -t -m "//d:Name" -c . -n ${HOME}/.domdom/tmp/incoming | sed -e 's/ xmlns.*=".*"//g' -e 's/<Name>//g' -e 's/<\/Name>//g' > ${HOME}/.domdom/tmp/list
-  fetchEpisodeUrl
+  readNumber
 }
 
-fetchEpisodeUrl()
+generateNumberSequence()
+{
+  bIFS=$IFS
+  #this next line thanks to Cyrus from SuperUser
+  sequence=`echo "$1" | tr -cd "0-9,\n-" | tr "," "\n" | while IFS=- read A B; do eval echo {$A..${B:-$A}}; done | tr "\n" " "`
+  IFS=$bIFS
+}
+
+readNumber()
 {
   fileindex=0
   while read -r line
@@ -124,10 +139,18 @@ fetchEpisodeUrl()
   else
     echo $filenumber
   fi
+  
+  generateNumberSequence $filenumber
+  for q in $sequence
+  do
+    reference=file$q
+    filename=${!reference}
+    fetchEpisodeUrl
+  done
+}
 
-  reference=file$filenumber
-  filename=${!reference}
-
+fetchEpisodeUrl()
+{
   echo "File Selected: $filename"
   soapRequest RequestLinkDownload2
   $xmlstarlet sel -N d="http://tempuri.org/" -t -m "//d:RequestLinkDownload2Result" -c . -n ${HOME}/.domdom/tmp/incoming | sed -e 's/ xmlns.*=".*"//g' -e 's/<RequestLinkDownload2Result>//g' -e 's/<\/RequestLinkDownload2Result>//g' > ${HOME}/.domdom/tmp/urllist
@@ -155,7 +178,7 @@ downloadUrlList()
     then
       printf -v partnum "%05d" $i
       outputfile=$downloaddir/${filename}.${partnum}.zip.part
-      eval curl --globoff --output \"$outputfile\" \"${url}\"
+      eval curl -L -\# --globoff --output \"$outputfile\" \"${url}\"
       appendlistfile=${HOME}/.domdom/tmp/appendlist
       if [ $i -eq 1 ]
       then
@@ -164,12 +187,12 @@ downloadUrlList()
         echo "\"$outputfile\" " >> $appendlistfile
       fi
     else
-      eval curl --globoff --output \"$downloaddir/${filename}\" \"${url}\"
+      eval curl -L -\# --globoff --output \"$downloaddir/${filename}\" \"${url}\"
     fi
   done
   if [ $totalurls -ne 1 ]
   then
-    appendFiles
+    echo appendFiles
   fi
 }
 
@@ -184,7 +207,7 @@ appendFiles()
 
 unzipFile()
 {
-  eval unzip -d \"${downloaddir}\" \"$zipfile\"
+  eval unzip -qq -d \"${downloaddir}\" \"$zipfile\"
   cleanUp
 }
 
@@ -199,7 +222,7 @@ cleanUp()
   eval rm \"$zipfile\"  
   
   #Reset this in case I ever add a menu
-  downloaddir=`cat ${HOME}/.domdom/downloaddir`
+  #downloaddir=`cat ${HOME}/.domdom/downloaddir`
 }
 
 batchMode()
@@ -208,9 +231,9 @@ batchMode()
   then
     echo Using Batch Mode.
     batch="yes"
-    echo Anime Title: $1
+    echo "Anime Title: $1"
     title="$1"
-    echo File to Download: $2
+    echo "File(s) to Download: $2"
     filenumber="$2"
   fi
 }
@@ -251,8 +274,8 @@ xmlRequestLinkDownload2="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 #Main Entry Point
 
 firstTimeCheck
-batchMode "$@"
 readVariables
+batchMode "$@"
 readTitle
 
 exit 0
