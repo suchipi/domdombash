@@ -1,0 +1,258 @@
+#!/usr/local/bin/bash
+
+#This is an interface (soap client) for DomDomSoft Anime Downloader
+#Depends on xmlstarlet and curl
+#Reverse-engineered and rewritten in bash by Suchipi, because I wanted to use this service without needing Windows
+#Still uses license keys and whatnot (with 5 downloads per day limitation without) so I see no issue distributing it
+#Take note that bash is FAR from my language of choice so a lot of this is probably horrible
+#Also I wrote this on a FreeBSD system but it should work on pretty much any *nix, just change the shebang on the first line to your bash (or zsh should work) binary and set the below to your xmlstarlet binary:
+
+xmlstarlet="/usr/local/bin/xml"
+
+#Todo
+#Add a nice menu where you can manually change your settings after first-time run, choose what to do
+#Let user fetch the (huge) list of all Anime and grep through it to find the title they want
+#Let batch mode take stuff like: "Sword Art Online" 1-4,7,10-24 (right now it only does a single episode, which is only useful if you script elsewhere)
+#Maybe hide curl output and make some nicer download bars?
+#Hide unzip output and put a boring echo there, honestly won't take long but I'm lazy
+#Take on a project where I actually know anything about what I'm dealing with for once (I learned how to use a web debugging proxy, how to interface with SOAP servers, how to post with curl, how to (poorly) use xmlstarlet, and how to use bash, all just for this)
+#Add more comments
+#Learn to populate and use arrays properly instead of doing the weird hacky stuff I do
+#Stop relying on the filesystem for global variables from forked shells (don't worry I clean up after myself)
+#Cut down on unnecessary evals where I don't need them but just wanted to switch between eval and echo quickly for testing purposes
+
+echo "Welcome to Unofficial Bash DomDomSoft Anime Downloader"
+echo "Original by DomDomSoft, bash version by Suchipi"
+echo "This script depends on xmlstarlet and curl."
+echo ""
+
+wsdl="http://anime.domdomsoft.com/Services/MainService.asmx?WSDL"
+
+#Functions... can you tell I don't use bash much yet
+
+setupVariables()
+{
+  echo "For each item requested, the default entry is shown in brackets. Press [ENTER] without typing anything to keep the default entry, or type the desired value and press [ENTER] to continue."
+  echo ""
+  
+  echo -n "DomDomSoft Anime Downloader License Key []: "
+  read serial
+  if [ -n ${serial} ]
+  then
+    echo ${serial} > ${HOME}/.domdom/serial
+  fi
+  
+  echo -n "Download Directory [~/Downloads]: "
+  read downloaddir
+  if [ -z ${downloaddir} ]
+  then
+    downloaddir=${HOME}/Downloads
+  fi
+  echo ${downloaddir} > ${HOME}/.domdom/downloaddir
+}
+
+readVariables()
+{
+  serial=`cat ${HOME}/.domdom/serial`
+  downloaddir=`cat ${HOME}/.domdom/downloaddir`
+  mkdir -p ${HOME}/.domdom/tmp
+}
+
+firstTimeCheck()
+{
+  mkdir -p ${HOME}/.domdom
+  if [ ! -f ${HOME}/.domdom/initdone ]
+  then
+    echo "Looks like this is the first time you've run DomDomSoft Anime Downloader. We're gonna need some information to get started."
+    echo ""
+    setupVariables
+    touch ${HOME}/.domdom/initdone
+  fi
+}
+
+readTitle()
+{
+  echo -n "Enter the title of the anime you want to download and press [ENTER]: "
+  if [ -z "$title" ]
+  then
+    read title
+  else
+    echo $title
+  fi
+  eval mkdir -p \"${downloaddir}/${title}\"
+  downloaddir=${downloaddir}/${title}
+  fetchEpisodeList
+}
+
+soapRequest() # $1 is SOAPAction to perform
+{
+  updateXmlTemplates
+  reference=xml$1
+  echo ${!reference} > ${HOME}/.domdom/tmp/outgoing
+  curl -s --header "Content-Type: text/xml;charset=UTF-8" \
+       --header "SOAPAction:\"http://tempuri.org/$1\"" \
+       --data @${HOME}/.domdom/tmp/outgoing \
+       $wsdl \
+       > ${HOME}/.domdom/tmp/incoming
+}
+
+fetchEpisodeList()
+{
+  echo Fetching files for $title...
+  soapRequest GetListEpisode
+  episodecount=`$xmlstarlet sel -N d="http://tempuri.org/" -t -v "count(//d:Name)" ${HOME}/.domdom/tmp/incoming`
+  echo $episodecount files were found.
+  $xmlstarlet sel -N d="http://tempuri.org/" -t -m "//d:Name" -c . -n ${HOME}/.domdom/tmp/incoming | sed -e 's/ xmlns.*=".*"//g' -e 's/<Name>//g' -e 's/<\/Name>//g' > ${HOME}/.domdom/tmp/list
+  fetchEpisodeUrl
+}
+
+fetchEpisodeUrl()
+{
+  fileindex=0
+  while read -r line
+  do
+    ((fileindex++))
+    eval file${fileindex}=\"${line}\"
+    echo "$fileindex: $line"
+  done < ${HOME}/.domdom/tmp/list
+  
+  echo -n "Please enter the file number you would like to download and press [ENTER]: "
+  
+  if [ -z "$filenumber" ]
+  then
+    read filenumber
+  else
+    echo $filenumber
+  fi
+
+  reference=file$filenumber
+  filename=${!reference}
+
+  echo "File Selected: $filename"
+  soapRequest RequestLinkDownload2
+  $xmlstarlet sel -N d="http://tempuri.org/" -t -m "//d:RequestLinkDownload2Result" -c . -n ${HOME}/.domdom/tmp/incoming | sed -e 's/ xmlns.*=".*"//g' -e 's/<RequestLinkDownload2Result>//g' -e 's/<\/RequestLinkDownload2Result>//g' > ${HOME}/.domdom/tmp/urllist
+  downloadUrlList
+}
+
+downloadUrlList()
+{
+  sed -e 's/\|\|\|/\
+/g' ${HOME}/.domdom/tmp/urllist > ${HOME}/.domdom/tmp/urllistsplit
+  
+  urlindex=0
+  while read -r line
+  do
+    ((urlindex++))
+    echo $line > ${HOME}/.domdom/tmp/url${urlindex}
+  done < ${HOME}/.domdom/tmp/urllistsplit
+  totalurls=$urlindex
+  
+  for i in `seq $totalurls`
+  do  
+    url=`cat ${HOME}/.domdom/tmp/url$i`
+    echo "Downloading...($i/$totalurls)"
+    if [ $totalurls -ne 1 ] # If file is in multiple parts
+    then
+      printf -v partnum "%05d" $i
+      outputfile=$downloaddir/${filename}.${partnum}.zip.part
+      eval curl --globoff --output \"$outputfile\" \"${url}\"
+      appendlistfile=${HOME}/.domdom/tmp/appendlist
+      if [ $i -eq 1 ]
+      then
+        echo "\"$outputfile\" " > $appendlistfile
+      else
+        echo "\"$outputfile\" " >> $appendlistfile
+      fi
+    else
+      eval curl --globoff --output \"$downloaddir/${filename}\" \"${url}\"
+    fi
+  done
+  if [ $totalurls -ne 1 ]
+  then
+    appendFiles
+  fi
+}
+
+appendFiles()
+{
+  echo "Merging $totalurls parts..."
+  appendlist=`cat $appendlistfile`
+  zipfile=${downloaddir}/${filename}.zip
+  eval cat $appendlist \> \"$zipfile\"
+  unzipFile
+}
+
+unzipFile()
+{
+  eval unzip -d \"${downloaddir}\" \"$zipfile\"
+  cleanUp
+}
+
+cleanUp()
+{
+  while read -r line
+  do
+    eval rm $line
+  done < $appendlistfile
+
+  rm -r ${HOME}/.domdom/tmp
+  eval rm \"$zipfile\"  
+  
+  #Reset this in case I ever add a menu
+  downloaddir=`cat ${HOME}/.domdom/downloaddir`
+}
+
+batchMode()
+{
+  if [ -n "$1" ]
+  then
+    echo Using Batch Mode.
+    batch="yes"
+    echo Anime Title: $1
+    title="$1"
+    echo File to Download: $2
+    filenumber="$2"
+  fi
+}
+
+#XML Templates
+#I expected this to be the hardest part to handle but thanks to the way bash strings work this was stupid easy
+#all I had to do was escape quotes. Meanwhile all the logic about counting things and putting the commands together was the hard part for some reason
+
+updateXmlTemplates()
+{
+
+xmlGetListEpisode="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ns1=\"http://tempuri.org/\">
+  <SOAP-ENV:Body>
+    <ns1:GetListEpisode>
+      <ns1:animeTitle>$title</ns1:animeTitle>
+      <ns1:serial>$serial</ns1:serial>
+    </ns1:GetListEpisode>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+"
+
+xmlRequestLinkDownload2="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ns1=\"http://tempuri.org/\">
+  <SOAP-ENV:Body>
+    <ns1:RequestLinkDownload2>
+      <ns1:animeTitle>$title</ns1:animeTitle>
+      <ns1:episodeName>$filename</ns1:episodeName>
+      <ns1:serial>$serial</ns1:serial>
+    </ns1:RequestLinkDownload2>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+"
+
+}
+
+
+#Main Entry Point
+
+firstTimeCheck
+batchMode "$@"
+readVariables
+readTitle
+
+exit 0
