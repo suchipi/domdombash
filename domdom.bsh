@@ -192,7 +192,7 @@ downloadUrlList()
   done
   if [ $totalurls -ne 1 ]
   then
-    echo appendFiles
+    appendFiles
   fi
 }
 
