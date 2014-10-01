@@ -80,7 +80,6 @@ readTitle()
   fi
   #Change slashes in title to dashes so we don't make weird folders
   filetitle=`echo "${title}" | sed -e 's/\//-/g'`
-  eval mkdir -p \"${downloaddir}/${filetitle}\"
   downloaddir=${downloaddir}/${filetitle}
   fetchEpisodeList
 }
@@ -154,6 +153,7 @@ fetchEpisodeUrl()
   echo "File Selected: $filename"
   soapRequest RequestLinkDownload2
   $xmlstarlet sel -N d="http://tempuri.org/" -t -m "//d:RequestLinkDownload2Result" -c . -n ${HOME}/.domdom/tmp/incoming | sed -e 's/ xmlns.*=".*"//g' -e 's/<RequestLinkDownload2Result>//g' -e 's/<\/RequestLinkDownload2Result>//g' > ${HOME}/.domdom/tmp/urllist
+  eval mkdir -p \"${downloaddir}\"
   downloadUrlList
 }
 
