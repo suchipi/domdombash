@@ -178,7 +178,10 @@ downloadUrlList()
     then
       printf -v partnum "%05d" $i
       outputfile=$downloaddir/${filename}.${partnum}.zip.part
-      eval curl -L -\# --globoff --output \"$outputfile\" \"${url}\"
+	  if [ ! -e "$outputfile" ] && [ ! -e "$downloaddir/${filename}" ]
+	  then
+        eval curl -L -\# --globoff --output \"$outputfile\" \"${url}\"
+	  fi
       appendlistfile=${HOME}/.domdom/tmp/appendlist
       if [ $i -eq 1 ]
       then
@@ -187,7 +190,10 @@ downloadUrlList()
         echo "\"$outputfile\" " >> $appendlistfile
       fi
     else
-      eval curl -L -\# --globoff --output \"$downloaddir/${filename}\" \"${url}\"
+	  if [ ! -e "$downloaddir/${filename}" ]
+	  then
+        eval curl -L -\# --globoff --output \"$downloaddir/${filename}\" \"${url}\"
+	  fi
     fi
   done
   if [ $totalurls -ne 1 ]
@@ -217,8 +223,6 @@ cleanUp()
   do
     eval rm $line
   done < $appendlistfile
-
-  rm -r ${HOME}/.domdom/tmp
   eval rm \"$zipfile\"  
   
   #Reset this in case I ever add a menu
@@ -278,4 +282,5 @@ readVariables
 batchMode "$@"
 readTitle
 
+rm -r ${HOME}/.domdom/tmp
 exit 0
