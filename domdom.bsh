@@ -11,9 +11,6 @@ xmlstarlet="/usr/local/bin/xml"
 
 #Todo
 #Add a nice menu where you can manually change your settings after first-time run, choose what to do
-#Let user fetch the (huge) list of all Anime and grep through it to find the title they want
-#Maybe hide curl output and make some nicer download bars?
-#Hide unzip output and put a boring echo there, honestly won't take long but I'm lazy
 #Take on a project where I actually know anything about what I'm dealing with for once (I learned how to use a web debugging proxy, how to interface with SOAP servers, how to post with curl, how to (poorly) use xmlstarlet, and how to use bash, all just for this)
 #Add more comments
 #Learn to populate and use arrays properly instead of doing the weird hacky stuff I do
@@ -71,17 +68,55 @@ firstTimeCheck()
 
 readTitle()
 {
-  echo -n "Enter the title of the anime you want to download and press [ENTER]: "
+  echo -n "Enter the title of the anime you want to download (or enter \"?\" to search) and press [ENTER]: "
   if [ -z "$title" ]
   then
     read title
   else
     echo $title
   fi
+  if [ "$title" == "?" ]
+  then
+    unset title
+    getAnimeList
+  fi
   #Change slashes in title to dashes so we don't make weird folders
   filetitle=`echo "${title}" | sed -e 's/\//-/g'`
   downloaddir=${downloaddir}/${filetitle}
   fetchEpisodeList
+}
+
+getAnimeList()
+{
+  if [ -e ${HOME}/.domdom/animelist ]
+  then
+    echo -n "Would you like to update the anime list? Enter y or n and press [ENTER]: "
+    read updateoption
+  else
+    updateoption="y"
+  fi
+  if [[ "$updateoption" == "y" ]]
+  then
+    echo "Fetching anime list (this can take some time)..."
+    soapRequest GetAnimeList
+    $xmlstarlet sel -N d="http://tempuri.org/" -t -m "//d:Title" -c . -n ${HOME}/.domdom/tmp/incoming | sed -e 's/ xmlns.*=".*"//g' -e 's/<Title>//g' -e 's/<\/Title>//g' > ${HOME}/.domdom/animelist
+    echo "List downloaded"
+  fi
+  searchAnimeList
+}
+
+searchAnimeList()
+{
+  echo -n "Enter a search term (or leave blank to exit search) and press [ENTER]: "
+  read searchterm
+  if [ -n "$searchterm" ]
+  then
+    echo "Search Results:"
+    cat ${HOME}/.domdom/animelist | grep "$searchterm"
+  else
+    readTitle
+  fi
+  searchAnimeList
 }
 
 soapRequest() # $1 is SOAPAction to perform
@@ -268,6 +303,14 @@ xmlRequestLinkDownload2="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
       <ns1:episodeName>$filename</ns1:episodeName>
       <ns1:serial>$serial</ns1:serial>
     </ns1:RequestLinkDownload2>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+"
+
+xmlGetAnimeList="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ns1=\"http://tempuri.org/\">
+  <SOAP-ENV:Body>
+    <ns1:GetAnimeList/>
   </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>
 "
