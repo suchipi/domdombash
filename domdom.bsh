@@ -116,7 +116,10 @@ searchAnimeList()
   else
     readTitle
   fi
-  searchAnimeList
+  if [ -z "$jobdone" ]
+  then
+    searchAnimeList
+  fi
 }
 
 soapRequest() # $1 is SOAPAction to perform
@@ -175,12 +178,29 @@ readNumber()
   fi
   
   generateNumberSequence $filenumber
+  
+  confirmDownloadLocation
+  
   for q in $sequence
   do
     reference=file$q
     filename=${!reference}
     fetchEpisodeUrl
   done
+}
+
+confirmDownloadLocation()
+{
+  if [ -z $batch ]
+  then
+    echo -n "Files will be downloaded to ${downloaddir}. Is this okay? Enter y or n and press [ENTER]: "
+    read downloadconfirmation
+    if [[ "$downloadconfirmation" == "n" ]]
+    then
+      echo -n "Write the new download directory and press [ENTER]: "
+      read downloaddir
+    fi
+  fi
 }
 
 fetchEpisodeUrl()
@@ -260,6 +280,8 @@ cleanUp()
   done < $appendlistfile
   eval rm \"$zipfile\"  
   
+  jobdone="true"
+
   #Reset this in case I ever add a menu
   #downloaddir=`cat ${HOME}/.domdom/downloaddir`
 }
