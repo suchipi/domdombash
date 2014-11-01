@@ -12,14 +12,21 @@ It depends on xmlstarlet and curl. The path to xmlstarlet should be set in the s
 Upon first run, the script will ask a few questions about your setup; where to download anime to, what your domdomsoft anime downloader serial key is (if you have one), and so forth. These are saved in `~/.domdom` so you can delete this folder if you need to change them again later.
 Please take note that if you don't have a serial key, you can only download 5 episodes in a 24-hour period.
 
-The script can run interactively or in a batch mode, and is pretty straightforward. In interactive mode, it will first ask for the title of an anime to download. At this point you can also enter `?` to download the anime list and grep through it. Once you've found the anime you're looking for, you can return back to the title selection and input it. The titles need to be entered exactly as they appear in the anime list, so I suggest you just copy and paste it from your search.
+The script can run interactively or in a batch mode, and is pretty straightforward. 
+
+In interactive mode, it will first ask for the title of an anime to download. At this point you can also enter `?` to download the anime list and grep through it. Once you've found the anime you're looking for, you can return back to the title selection and input it. The titles need to be entered exactly as they appear in the anime list, so I suggest you just copy and paste it from your search.
+
 Once you've chosen the anime to download, a list of files under that title will be shown, prepended with numbers. You're asked to define a number range to download. You can use `-` and `,` to define this range, so some valid ranges might be `1-12,15,19`, `4-6,3,8`, `1-24`, or just `8`. It's pretty straightforward.
+
 The application will present you with a download directory based on the name of the anime and allow you to change it before it downloads all the files there. Then, off it goes! It will automatically exit when the download is completed.
+
 Some files are in multiple parts, in which case the application will download all the parts and merge them. You can see which part of the current file is being downloaded from the `Downloading...(1/2)` text; in this example, the first part of two total parts is being downloaded.
 
 To run the script in batch mode, execute it with command line arguments. The first argument should be the anime title and the second should be the episode range. So, for example
-> `$ ./domdom.bsh "Sword Art Online" "1-2,5"
+> `$ ./domdom.bsh "Sword Art Online" "1-2,5"`
+
 The episode range can be omitted in which case it will just input the title for you and go to the episode range selection.
+
 Please note that in batch mode, the default download directory is used, and there is no confirmation dialog to change it.
 
 Here's a small sample of it in use:
