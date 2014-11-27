@@ -214,8 +214,7 @@ fetchEpisodeUrl()
 
 downloadUrlList()
 {
-  sed -e 's/\|\|\|/\
-/g' ${HOME}/.domdom/tmp/urllist > ${HOME}/.domdom/tmp/urllistsplit
+  sed -e 's/|||/\n/g' ${HOME}/.domdom/tmp/urllist > ${HOME}/.domdom/tmp/urllistsplit
   
   urlindex=0
   while read -r line
